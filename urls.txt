@@ -1,7 +1,12 @@
-Masukkan URL Videy yang ingin diunduh ke dalam kolom yang disediakan. Anda tidak perlu khawatir tentang karakter lain yang mungkin tersalin bersamaan, karena program ini secara otomatis akan mendeteksi tautan yang valid sebagai URL Videy.
+Enter a valid Videy URL in the input field. The program will automatically detect proper URLs, so extra characters won’t be an issue.
 
-Contoh URL Videy:
-🎥 SAMPAI MENGGELIAT, GILA PARAH!
-https://videy.co/v?id=1b3d5f7h9
+Example of a Valid URL:
+🔥 HOT VIRAL VIDEO COLLECTION ON VIDEY:
+- https://videy.co/v?id=m1idrcmWs
+- https://videy.co/v?id=wt5giaKZn
+- https://videy.co/v?id=6dvKu21Um
 
-Pastikan URL memiliki format yang benar seperti pada contoh di atas untuk memastikan proses berjalan dengan lancar.
+❤ GET MORE COLLECTIONS!
+- https://videy-collections.co/
+
+Make sure the URL follows the correct format to ensure smooth downloading. Then, click to start the process.

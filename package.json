@@ -8,8 +8,19 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node ."
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/itsreimau/videy-bulk-downloader.git"
+  },
+  "keywords": [
+    "videy"
+  ],
   "author": "Muhamad Ikbal Maulana | ItsReimau",
   "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/itsreimau/videy-bulk-downloader/issues"
+  },
+  "homepage": "https://github.com/itsreimau/videy-bulk-downloader#readme",
   "dependencies": {
     "axios": "^1.7.8",
     "ora": "^8.1.1"
