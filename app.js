@@ -14,21 +14,19 @@ import {
     hideBin
 } from "yargs/helpers";
 
-// Define constants
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DOWNLOADS_FOLDER = path.resolve(__dirname, "downloads");
 const URLS_FILE = path.resolve(__dirname, "urls.txt");
 
-// Ensure the downloads folder exists
 await fs.mkdir(DOWNLOADS_FOLDER, {
     recursive: true
 });
 
 /**
- * Extract video URLs and metadata from input text.
- * @param {string} input - The input text containing URLs.
- * @returns {Array} Array of objects containing video IDs, URLs, and filenames.
+ * Extracts video URLs and filenames from a given input string.
+ * @param {string} input - Input containing video URLs.
+ * @returns {Array} Extracted video details.
  */
 const extractVideyURLs = (input) => [...input.matchAll(/https?:\/\/videy\.co\/v\?id=([\w\d]+)/g)].map((match) => ({
     id: match[1],
@@ -37,10 +35,10 @@ const extractVideyURLs = (input) => [...input.matchAll(/https?:\/\/videy\.co\/v\
 }));
 
 /**
- * Download a video file from a given URL.
+ * Downloads a video file from a given URL.
  * @param {string} url - The video URL.
- * @param {string} filename - The name of the file to save.
- * @returns {Promise<string>} The result message.
+ * @param {string} filename - The name to save the video as.
+ * @returns {Promise<string>} Status message.
  */
 const downloadVideo = async (url, filename) => {
     const filePath = path.join(DOWNLOADS_FOLDER, filename);
@@ -53,10 +51,8 @@ const downloadVideo = async (url, filename) => {
         });
         const writer = createWriteStream(filePath);
 
-        // Pipe the response data to the file
         response.data.pipe(writer);
 
-        // Wait until the file is written
         await new Promise((resolve, reject) => {
             writer.on("finish", resolve);
             writer.on("error", reject);
@@ -71,7 +67,7 @@ const downloadVideo = async (url, filename) => {
 };
 
 /**
- * Clean all files in the downloads folder.
+ * Cleans the downloads folder by deleting all files.
  */
 const cleanDownloadsFolder = async () => {
     const spinner = ora("Cleaning downloads folder...").start();
@@ -85,7 +81,7 @@ const cleanDownloadsFolder = async () => {
 };
 
 /**
- * Main function to handle command-line arguments and execute the script.
+ * Main function to handle video downloading.
  */
 const main = async () => {
     const {
@@ -93,28 +89,25 @@ const main = async () => {
     } = yargs(hideBin(process.argv))
         .option("mode", {
             alias: "m",
-            choices: ["add", "overwrite"],
-            demandOption: true,
-            describe: "Mode to handle downloads (add or overwrite existing files)",
+            choices: ["a", "o"],
+            default: "a",
+            describe: "Mode to handle downloads (a for add, o for overwrite)",
+            coerce: (value) => (value === "a" ? "add" : "overwrite"),
         })
         .argv;
 
     try {
-        // Check if the URLs file exists and is not empty
         if (!existsSync(URLS_FILE)) throw new Error("'urls.txt' not found. Add URLs and rerun.");
         const input = (await fs.readFile(URLS_FILE, "utf-8")).trim();
         if (!input) throw new Error("'urls.txt' is empty. Add URLs and rerun.");
 
-        // Extract video URLs and metadata
         const videos = extractVideyURLs(input);
         if (!videos.length) throw new Error("No valid URLs found in 'urls.txt'.");
 
-        // Clean downloads folder if overwrite mode is selected
         if (mode === "overwrite") await cleanDownloadsFolder();
 
         console.log(`Processing ${videos.length} video(s)...`);
 
-        // Download videos concurrently
         const results = await Promise.allSettled(
             videos.map(({
                 url,
@@ -122,12 +115,9 @@ const main = async () => {
             }) => downloadVideo(url, filename))
         );
 
-        // Log the results of each download
         results.forEach((res, i) => {
             const message =
-                res.status === "fulfilled" ?
-                res.value :
-                `Error: ${res.reason.message}`;
+                res.status === "fulfilled" ? res.value : `Error: ${res.reason.message}`;
             console.log(`- Video ${i + 1}: ${message}`);
         });
 
@@ -137,5 +127,4 @@ const main = async () => {
     }
 };
 
-// Run the script
 main().catch((err) => console.error("Fatal Error:", err.message));
