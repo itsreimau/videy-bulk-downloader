@@ -6,7 +6,8 @@
   "main": "app.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node ."
+    "start": "node .",
+    "start:pm2": "pm2 start ./index.js --name \"videy-bulk-downloader\""
   },
   "repository": {
     "type": "git",
