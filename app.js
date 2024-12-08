@@ -2,7 +2,6 @@ import axios from "axios";
 import fs from "fs/promises";
 import path from "path";
 import ora from "ora";
-import readline from "readline";
 import {
     createWriteStream,
     existsSync
@@ -10,34 +9,54 @@ import {
 import {
     fileURLToPath
 } from "url";
+import yargs from "yargs";
+import {
+    hideBin
+} from "yargs/helpers";
 
-// Resolve __dirname equivalent
+// Define constants
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const DOWNLOADS_FOLDER = path.resolve(__dirname, "downloads");
+const URLS_FILE = path.resolve(__dirname, "urls.txt");
 
-// Ensure "downloads" folder exists
-const downloadsFolder = path.resolve(__dirname, "downloads");
-await fs.mkdir(downloadsFolder, {
+// Ensure the downloads folder exists
+await fs.mkdir(DOWNLOADS_FOLDER, {
     recursive: true
 });
 
-// Function to download video
+/**
+ * Extract video URLs and metadata from input text.
+ * @param {string} input - The input text containing URLs.
+ * @returns {Array} Array of objects containing video IDs, URLs, and filenames.
+ */
+const extractVideyURLs = (input) => [...input.matchAll(/https?:\/\/videy\.co\/v\?id=([\w\d]+)/g)].map((match) => ({
+    id: match[1],
+    url: `https://cdn.videy.co/${match[1]}.mp4`,
+    filename: `${match[1]}.mp4`,
+}));
+
+/**
+ * Download a video file from a given URL.
+ * @param {string} url - The video URL.
+ * @param {string} filename - The name of the file to save.
+ * @returns {Promise<string>} The result message.
+ */
 const downloadVideo = async (url, filename) => {
-    const filePath = path.join(downloadsFolder, filename);
+    const filePath = path.join(DOWNLOADS_FOLDER, filename);
+    if (existsSync(filePath)) return `File "${filename}" already exists.`;
 
-    if (existsSync(filePath)) {
-        return `File "${filename}" already exists, skipping download.`;
-    }
-
-    const spinner = ora(`Downloading ${filename}...`).start();
+    const spinner = ora(`Downloading: ${filename}`).start();
     try {
         const response = await axios.get(url, {
             responseType: "stream"
         });
-
         const writer = createWriteStream(filePath);
+
+        // Pipe the response data to the file
         response.data.pipe(writer);
 
+        // Wait until the file is written
         await new Promise((resolve, reject) => {
             writer.on("finish", resolve);
             writer.on("error", reject);
@@ -46,99 +65,77 @@ const downloadVideo = async (url, filename) => {
         spinner.succeed(`Downloaded: ${filename}`);
         return `Saved to: ${filePath}`;
     } catch (error) {
-        spinner.fail(`Error downloading ${filename}: ${error.message}`);
-        return `Error: ${error.message}`;
+        spinner.fail(`Failed: ${filename}`);
+        return `Error downloading "${filename}": ${error.message}`;
     }
 };
 
-// Function to extract Videy URLs
-const extractVideyURLs = (input) => {
-    const regex = /https?:\/\/videy\.co\/v\?id=([\w\d]+)/g;
-
-    return Array.from(input.matchAll(regex), (match) => ({
-        id: match[1],
-        url: `https://cdn.videy.co/${match[1]}.mp4`,
-        filename: `${match[1]}.mp4`,
-    }));
-};
-
-// Function to prompt user input
-const promptUser = (query) => {
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-    });
-
-    return new Promise((resolve) => rl.question(query, (answer) => {
-        rl.close();
-        resolve(answer.trim());
-    }));
-};
-
-// Function to clean the downloads folder
+/**
+ * Clean all files in the downloads folder.
+ */
 const cleanDownloadsFolder = async () => {
-    const spinner = ora("Cleaning 'downloads' folder...").start();
-
+    const spinner = ora("Cleaning downloads folder...").start();
     try {
-        const files = await fs.readdir(downloadsFolder);
-        await Promise.all(files.map((file) => fs.unlink(path.join(downloadsFolder, file))));
-        spinner.succeed("Old files deleted.");
+        const files = await fs.readdir(DOWNLOADS_FOLDER);
+        await Promise.all(files.map((file) => fs.unlink(path.join(DOWNLOADS_FOLDER, file))));
+        spinner.succeed("Downloads folder cleaned.");
     } catch (error) {
-        spinner.fail(`Failed to clean 'downloads' folder: ${error.message}`);
+        spinner.fail(`Failed to clean folder: ${error.message}`);
     }
 };
 
-// Main function
+/**
+ * Main function to handle command-line arguments and execute the script.
+ */
 const main = async () => {
-    const spinner = ora("Starting...").start();
-    const filePath = path.resolve(__dirname, "urls.txt");
+    const {
+        mode
+    } = yargs(hideBin(process.argv))
+        .option("mode", {
+            alias: "m",
+            choices: ["add", "overwrite"],
+            demandOption: true,
+            describe: "Mode to handle downloads (add or overwrite existing files)",
+        })
+        .argv;
 
     try {
-        await fs.access(filePath);
-    } catch {
-        spinner.info("'urls.txt' not found. Creating file...");
-        await fs.writeFile(filePath, "", "utf-8");
-        spinner.fail("Please add Videy URLs to 'urls.txt' and run the script again.");
-        return;
+        // Check if the URLs file exists and is not empty
+        if (!existsSync(URLS_FILE)) throw new Error("'urls.txt' not found. Add URLs and rerun.");
+        const input = (await fs.readFile(URLS_FILE, "utf-8")).trim();
+        if (!input) throw new Error("'urls.txt' is empty. Add URLs and rerun.");
+
+        // Extract video URLs and metadata
+        const videos = extractVideyURLs(input);
+        if (!videos.length) throw new Error("No valid URLs found in 'urls.txt'.");
+
+        // Clean downloads folder if overwrite mode is selected
+        if (mode === "overwrite") await cleanDownloadsFolder();
+
+        console.log(`Processing ${videos.length} video(s)...`);
+
+        // Download videos concurrently
+        const results = await Promise.allSettled(
+            videos.map(({
+                url,
+                filename
+            }) => downloadVideo(url, filename))
+        );
+
+        // Log the results of each download
+        results.forEach((res, i) => {
+            const message =
+                res.status === "fulfilled" ?
+                res.value :
+                `Error: ${res.reason.message}`;
+            console.log(`- Video ${i + 1}: ${message}`);
+        });
+
+        ora().succeed("All tasks completed.");
+    } catch (error) {
+        ora().fail(error.message);
     }
-
-    const input = (await fs.readFile(filePath, "utf-8")).trim();
-    if (!input) {
-        spinner.fail("'urls.txt' is empty. Please add URLs to the file.");
-        return;
-    }
-
-    const videoList = extractVideyURLs(input);
-    if (videoList.length === 0) {
-        spinner.fail("No valid Videy URLs found in 'urls.txt'.");
-        return;
-    }
-
-    spinner.info(`Found ${videoList.length} video(s).`);
-
-    const mode = await promptUser("Do you want to (A)dd new videos or (T)runcate downloads folder and start fresh? (A/T): ");
-    if (mode.toLowerCase() === "t") {
-        await cleanDownloadsFolder();
-    } else if (mode.toLowerCase() !== "a") {
-        console.error("Invalid option. Please choose either 'A' or 'T'.");
-        return;
-    }
-
-    spinner.info("Starting downloads...\n");
-
-    const results = await Promise.allSettled(videoList.map(({
-        url,
-        filename
-    }) => downloadVideo(url, filename)));
-
-    console.log("\nDownload Summary:");
-    results.forEach((result, index) => {
-        const statusMessage = result.status === "fulfilled" ? result.value : `Error: ${result.reason}`;
-        console.log(`- Video ${index + 1}: ${statusMessage}`);
-    });
-
-    spinner.succeed("All downloads complete.");
 };
 
-// Execute the script
-main().catch((err) => console.error("Error:", err.message));
+// Run the script
+main().catch((err) => console.error("Fatal Error:", err.message));
