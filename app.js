@@ -92,7 +92,11 @@ const main = async () => {
             choices: ["a", "o"],
             default: "a",
             describe: "Mode to handle downloads (a for add, o for overwrite)",
-            coerce: (value) => (value === "a" ? "add" : "overwrite"),
+            coerce: (value) => {
+                if (value === "a") return "add";
+                if (value === "o") return "overwrite";
+                return value;
+            },
         })
         .argv;
 
