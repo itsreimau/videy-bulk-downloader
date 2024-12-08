@@ -5,7 +5,8 @@ import {
 } from "url";
 import {
     createWriteStream,
-    existsSync
+    existsSync,
+    writeFileSync
 } from "fs";
 import https from "https";
 import http from "http";
@@ -74,7 +75,10 @@ const cleanDownloadsFolder = async () => {
 
 const main = async () => {
     try {
-        if (!existsSync(URLS_FILE)) throw new Error("'urls.txt' not found. Add URLs and rerun.");
+        if (!existsSync(URLS_FILE)) {
+            writeFileSync(URLS_FILE, "", "utf8");
+            throw new Error(`'${URLS_FILE}' was created because it does not exist.`);
+        }
 
         const input = (await fs.readFile(URLS_FILE, "utf-8")).trim();
         if (!input) throw new Error("'urls.txt' is empty. Add URLs and rerun.");
