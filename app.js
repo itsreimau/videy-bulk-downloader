@@ -86,7 +86,7 @@ const main = async () => {
         const videos = extractVideyURLs(input);
         if (!videos.length) throw new Error("No valid URLs found in 'urls.txt'.");
 
-        const mode = process.argv.includes(["--overwrite", "-o"]) ? "overwrite" : "add";
+        const mode = process.argv.includes("--overwrite") || process.argv.includes("-o") ? "overwrite" : "add";
         if (mode === "overwrite") await cleanDownloadsFolder();
 
         console.log(`Processing ${videos.length} video(s)...`);
