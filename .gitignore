@@ -1,0 +1,5 @@
+# Ignore downloads directory
+downloads/
+
+# Ignore urls.txt file
+urls.txt
