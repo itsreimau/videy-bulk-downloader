@@ -1,107 +1,93 @@
 import path from "path";
 import fs from "fs/promises";
 import {
-    createWriteStream,
-    existsSync
+    createWriteStream
 } from "fs";
 import https from "https";
+import {
+    fileURLToPath
+} from "url";
 
-const ROOT_FOLDER = process.cwd();
-const DOWNLOADS_FOLDER = path.resolve(ROOT_FOLDER, "downloads");
-const URLS_FILE = path.resolve(ROOT_FOLDER, "urls.txt");
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-const ensureExists = async (filePath, isDirectory = true) => {
+const DOWNLOADS_FOLDER = path.join(__dirname, "downloads");
+const URLS_FILE = path.join(__dirname, "urls.txt");
+
+const ensureExists = async (filePath, isDir = true) => {
     try {
-        if (isDirectory) {
-            await fs.mkdir(filePath, {
-                recursive: true
-            });
-        } else if (!existsSync(filePath)) {
-            await fs.writeFile(filePath, "", "utf8");
-        }
-    } catch (error) {
-        throw new Error(`Failed to ensure "${filePath}": ${error.message}`);
-    }
-};
-
-const extractVideyURLs = (input) => {
-    const regex = /https:\/\/videy\.co\/v\?id=([\w\d]+)/g;
-    return [...input.matchAll(regex)].map((match) => ({
-        id: match[1],
-        url: `https://cdn.videy.co/${match[1]}.mp4`,
-        filename: `${match[1]}.mp4`,
-    }));
-};
-
-const downloadVideo = (url, filename) => {
-    return new Promise((resolve, reject) => {
-        const filePath = path.join(DOWNLOADS_FOLDER, filename);
-
-        if (existsSync(filePath)) {
-            resolve(`File "${filename}" already exists.`);
-            return;
-        }
-
-        console.log(`Downloading: ${filename}`);
-        const req = https.get(url, (response) => {
-            if (response.statusCode !== 200) {
-                reject(`Failed to download "${filename}": ${response.statusMessage}`);
-                return;
-            }
-
-            const writer = createWriteStream(filePath);
-            response.pipe(writer);
-
-            writer.on("finish", () => resolve(`Downloaded: ${filename}`));
-            writer.on("error", (error) => reject(`Error writing file "${filename}": ${error.message}`));
+        isDir ? await fs.mkdir(filePath, {
+            recursive: true
+        }) : await fs.writeFile(filePath, "", {
+            flag: "wx"
         });
+    } catch {}
+};
 
-        req.on("error", (error) => reject(`Error downloading "${filename}": ${error.message}`));
+const extractVideyURLs = (input) => [...input.matchAll(/https:\/\/videy\.co\/v\?id=([\w\d]+)/g)].map(([_, id]) => ({
+    url: `https://cdn.videy.co/${id}.mp4`,
+    filename: `${id}.mp4`,
+}));
+
+const downloadVideo = (url, filename) =>
+    new Promise((resolve, reject) => {
+        const filePath = path.join(DOWNLOADS_FOLDER, filename);
+        fs.access(filePath)
+            .then(() => {
+                console.log(`File "${filename}" already exists. Skipping.`);
+                resolve();
+            })
+            .catch(() => {
+                console.log(`Downloading: ${filename}`);
+                const fileStream = createWriteStream(filePath);
+
+                https.get(url, (res) => {
+                    if (res.statusCode !== 200) return reject(`Failed to download "${filename}"`);
+
+                    const totalBytes = parseInt(res.headers["content-length"], 10) || 0;
+                    let downloadedBytes = 0,
+                        lastLoggedPercent = 0;
+
+                    res.pipe(fileStream);
+
+                    res.on("data", (chunk) => {
+                        downloadedBytes += chunk.length;
+                        if (totalBytes) {
+                            const percent = Math.floor((downloadedBytes / totalBytes) * 100);
+                            if (percent !== lastLoggedPercent) {
+                                process.stdout.write(`\rDownloading ${filename}: ${percent}%`);
+                                lastLoggedPercent = percent;
+                            }
+                        }
+                    });
+
+                    fileStream.on("finish", () => {
+                        console.log(`\rDownloaded: ${filename} ✔`);
+                        resolve();
+                    });
+
+                    fileStream.on("error", reject);
+                }).on("error", reject);
+            });
     });
-};
-
-const cleanDownloadsFolder = async () => {
-    console.log("Cleaning downloads folder...");
-    const files = await fs.readdir(DOWNLOADS_FOLDER);
-    await Promise.all(files.map((file) => fs.unlink(path.join(DOWNLOADS_FOLDER, file))));
-    console.log("Downloads folder cleaned.");
-};
 
 const main = async () => {
-    try {
-        const args = process.argv.slice(2);
+    await ensureExists(DOWNLOADS_FOLDER);
+    await ensureExists(URLS_FILE, false);
 
-        await ensureExists(DOWNLOADS_FOLDER);
-        await ensureExists(URLS_FILE, false);
+    const urls = (await fs.readFile(URLS_FILE, "utf8")).trim();
+    if (!urls) return console.error("No URLs found in 'urls.txt'.");
 
-        if (args.includes("--overwrite")) {
-            await cleanDownloadsFolder();
-        }
+    const videos = extractVideyURLs(urls);
+    if (!videos.length) return console.error("No valid URLs found.");
 
-        const input = (await fs.readFile(URLS_FILE, "utf8")).trim();
-        if (!input) throw new Error("'urls.txt' is empty. Add URLs and rerun the program.");
+    console.log(`Downloading ${videos.length} video(s)...`);
+    await Promise.allSettled(videos.map(({
+        url,
+        filename
+    }) => downloadVideo(url, filename)));
 
-        const videos = extractVideyURLs(input);
-        if (!videos.length) throw new Error("No valid URLs found in 'urls.txt'.");
-
-        console.log(`Processing ${videos.length} video(s)...`);
-        for (const {
-                url,
-                filename
-            }
-            of videos) {
-            try {
-                const message = await downloadVideo(url, filename);
-                console.log(message);
-            } catch (error) {
-                console.error(`Error processing "${filename}": ${error}`);
-            }
-        }
-
-        console.log("All tasks completed.");
-    } catch (error) {
-        console.error(`Error: ${error.message}`);
-    }
+    console.log("All downloads completed.");
 };
 
-main();
+main().catch(console.error);
