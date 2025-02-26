@@ -37,19 +37,19 @@ const clearDownloadsFolder = async () => {
     try {
         const files = await fs.readdir(DOWNLOADS_FOLDER);
         if (files.length === 0) {
-            console.log("✔ Downloads folder is already empty.");
+            console.log("Downloads folder is already empty.");
             return;
         }
 
-        console.log("🗑 Clearing downloads folder...");
+        console.log("Clearing downloads folder...");
         await Promise.all(files.map((file) => fs.unlink(path.join(DOWNLOADS_FOLDER, file))));
-        console.log("✔ Downloads folder cleared.");
+        console.log("Downloads folder cleared.");
     } catch (error) {
-        console.error("❌ Error clearing downloads folder:", error);
+        console.error("Error clearing downloads folder:", error);
     }
 };
 
-const extractVideyURLs = (input) => [...input.matchAll(/https:\/\/videy\.co\/v\?id=([\w\d]+)/g)].map(([_, id]) => ({
+const extractVideyURLs = (input) => [...input.matchAll(/https:\/\/videy\.co\/v\/?\?id=([\w\d]+)/g)].map(([_, id]) => ({
     url: `https://cdn.videy.co/${id}.mp4`,
     filename: `${id}.mp4`,
 }));
@@ -59,10 +59,10 @@ const downloadVideo = async (url, filename, retries = MAX_RETRIES) => {
 
     try {
         await fs.access(filePath);
-        console.log(`✔ File "${filename}" already exists. Skipping.`);
+        console.log(`File "${filename}" already exists. Skipping.`);
         return;
     } catch {
-        console.log(`⬇ Downloading: ${filename}`);
+        console.log(`Downloading: ${filename}`);
     }
 
     return new Promise((resolve, reject) => {
@@ -71,7 +71,7 @@ const downloadVideo = async (url, filename, retries = MAX_RETRIES) => {
             if (res.statusCode !== 200) {
                 fileStream.close();
                 fs.unlink(filePath).catch(() => {});
-                return reject(`❌ Failed to download "${filename}" (HTTP ${res.statusCode})`);
+                return reject(`Failed to download "${filename}" (HTTP ${res.statusCode})`);
             }
 
             const totalBytes = parseInt(res.headers["content-length"], 10) || 0;
@@ -84,14 +84,14 @@ const downloadVideo = async (url, filename, retries = MAX_RETRIES) => {
                 if (totalBytes) {
                     const percent = Math.floor((downloadedBytes / totalBytes) * 100);
                     if (percent !== lastLoggedPercent) {
-                        process.stdout.write(`\r⬇ Downloading ${filename}: ${percent}%`);
+                        process.stdout.write(`\rDownloading ${filename}: ${percent}%`);
                         lastLoggedPercent = percent;
                     }
                 }
             });
 
             fileStream.on("finish", () => {
-                console.log(`\r✔ Downloaded: ${filename}`);
+                console.log(`\rDownload complete: ${filename}`);
                 resolve();
             });
 
@@ -101,10 +101,10 @@ const downloadVideo = async (url, filename, retries = MAX_RETRIES) => {
             fs.unlink(filePath).catch(() => {});
 
             if (retries > 0) {
-                console.warn(`⚠ Retrying ${filename} (${MAX_RETRIES - retries + 1}/${MAX_RETRIES})...`);
+                console.warn(`Retrying ${filename} (${MAX_RETRIES - retries + 1}/${MAX_RETRIES})...`);
                 setTimeout(() => downloadVideo(url, filename, retries - 1).then(resolve).catch(reject), 2000);
             } else {
-                reject(`❌ Failed to download "${filename}" after ${MAX_RETRIES} attempts.`);
+                reject(`Failed to download "${filename}" after ${MAX_RETRIES} attempts.`);
             }
         });
     });
@@ -132,7 +132,7 @@ const downloadConcurrently = async (videos) => {
     const failedDownloads = results.filter(({
         status
     }) => status === "rejected").length;
-    console.log(`✅ All downloads completed. ${failedDownloads ? `⚠ ${failedDownloads} download(s) failed.` : ""}`);
+    console.log(`All downloads completed. ${failedDownloads ? `${failedDownloads} download(s) failed.` : ""}`);
 };
 
 const main = async () => {
@@ -147,15 +147,17 @@ const main = async () => {
     try {
         urls = (await fs.readFile(URLS_FILE, "utf8")).trim();
     } catch (error) {
-        return console.error(`❌ Error reading URLs file:`, error);
+        return console.error(`Error reading URLs file:`, error);
     }
 
-    if (!urls) return console.error("⚠ No URLs found in 'urls.txt'.");
+    if (!urls) return console.error("No URLs found in 'urls.txt'.");
 
     const videos = extractVideyURLs(urls);
-    if (!videos.length) return console.error("⚠ No valid URLs found.");
+    if (!videos.length) return console.error("No valid URLs found.");
 
-    console.log(`📥 Starting downloads for ${videos.length} video(s)... (Mode: ${isSequential ? "Sequential" : "Concurrent"}, Overwrite: ${isOverwrite ? "Yes" : "No"})`);
+    console.log(
+        `Starting downloads for ${videos.length} video(s)... (Mode: ${isSequential ? "Sequential" : "Concurrent"}, Overwrite: ${isOverwrite ? "Yes" : "No"})`
+    );
 
     if (isSequential) {
         await downloadSequentially(videos);
